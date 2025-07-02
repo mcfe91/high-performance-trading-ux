@@ -62,5 +62,5 @@ Open `http://localhost:3000` in a modern browser (requires HTTPS for SharedArray
 - **Zero latency** SharedArrayBuffer updates
 
 ## TODO
-- ** Symbols are fixed at 50 and static
+- Symbols are currently hardcoded to support memory layout. Make this dynamic somehow...
 
