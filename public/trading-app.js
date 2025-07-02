@@ -11,12 +11,24 @@ const MEMORY_LAYOUT = {
 };
 
 const SYMBOL_MAP = new Map([
-    ['EURUSD', 0], ['GBPUSD', 1], ['USDJPY', 2], ['BTCUSD', 3], ['ETHUSD', 4],
-    ['AAPL', 5], ['TSLA', 6], ['MSFT', 7], ['EURGBP', 8], ['EURJPY', 9],
-    ['GBPJPY', 10], ['USDCAD', 11], ['NZDUSD', 12], ['EURCHF', 13], ['GBPAUD', 14],
-    ['AUDUSD', 15], ['USDCHF', 16], ['XAUUSD', 17], ['XAGUSD', 18], ['UKOIL', 19]
+    // Forex majors  
+    ['EURUSD', 0], ['GBPUSD', 1], ['USDJPY', 2], ['USDCAD', 3], ['AUDUSD', 4], ['NZDUSD', 5], ['USDCHF', 6], ['EURGBP', 7], ['EURJPY', 8], ['GBPJPY', 9], ['EURCHF', 10], ['GBPAUD', 11],
+    
+    // More forex
+    ['AUDCAD', 12], ['AUDCHF', 13], ['AUDNZD', 14], ['CADCHF', 15], ['CADJPY', 16], ['CHFJPY', 17], ['EURAUD', 18], ['EURCAD', 19],
+    
+    // Stocks
+    ['AAPL', 20], ['TSLA', 21], ['MSFT', 22], ['GOOGL', 23], ['AMZN', 24], ['META', 25], ['NFLX', 26], ['NVDA', 27], ['AMD', 28], ['INTC', 29],
+    
+    // Crypto
+    ['BTCUSD', 30], ['ETHUSD', 31], ['ADAUSD', 32], ['SOLUSD', 33], ['DOTUSD', 34], ['MATICUSD', 35], ['AVAXUSD', 36], ['ATOMUSD', 37],
+    
+    // Commodities  
+    ['XAUUSD', 38], ['XAGUSD', 39], ['UKOIL', 40], ['NATGAS', 41], ['COPPER', 42], ['PLATINUM', 43],
+    
+    // Indices
+    ['SPX500', 44], ['NASDAQ', 45], ['DOW30', 46], ['VIX', 47], ['DAX30', 48], ['FTSE100', 49]
 ]);
-
 const INDEX_TO_SYMBOL = new Map(
     Array.from(SYMBOL_MAP.entries()).map(([symbol, index]) => [index, symbol])
 );
