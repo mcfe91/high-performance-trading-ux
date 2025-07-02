@@ -1,17 +1,15 @@
-// Memory layout constants (shared with worker)
 const MEMORY_LAYOUT = {
     SYMBOL_COUNT: 50,
-    PRICE_OFFSET: 0,          // Float32Array: 0-200 bytes
-    TIMESTAMP_OFFSET: 200,    // Float64Array: 200-600 bytes  
-    CHANGE_OFFSET: 600,       // Float32Array: 600-800 bytes
-    VOLUME_OFFSET: 800,       // Float32Array: 800-1000 bytes
-    BID_OFFSET: 1000,         // Float32Array: 1000-1200 bytes
-    ASK_OFFSET: 1200,         // Float32Array: 1200-1400 bytes
-    FLAGS_OFFSET: 1400,       // Uint8Array: 1400+ bytes (dirty flags)
-    BUFFER_SIZE: 1500         // 1.5KB total
+    PRICE_OFFSET: 0,
+    TIMESTAMP_OFFSET: 200,
+    CHANGE_OFFSET: 600,
+    VOLUME_OFFSET: 800,
+    BID_OFFSET: 1000,
+    ASK_OFFSET: 1200,
+    FLAGS_OFFSET: 1400,
+    BUFFER_SIZE: 1500
 };
 
-// Symbol mapping (same as worker)
 const SYMBOL_MAP = new Map([
     ['EURUSD', 0], ['GBPUSD', 1], ['USDJPY', 2], ['BTCUSD', 3], ['ETHUSD', 4],
     ['AAPL', 5], ['TSLA', 6], ['MSFT', 7], ['EURGBP', 8], ['EURJPY', 9],
@@ -23,7 +21,6 @@ const INDEX_TO_SYMBOL = new Map(
     Array.from(SYMBOL_MAP.entries()).map(([symbol, index]) => [index, symbol])
 );
 
-// Component Pool for performance
 class ComponentPool {
     constructor(createFn, resetFn, initialSize = 50) {
         this.createFn = createFn;
@@ -62,7 +59,6 @@ class ComponentPool {
     }
 }
 
-// Render Batch for performance
 class RenderBatch {
     constructor() {
         this.frameStart = 0;
@@ -71,16 +67,8 @@ class RenderBatch {
         this.avgFrameTime = 0;
     }
     
-    processBatch(components) {
+    processBatch(componentCount) {
         this.frameStart = performance.now();
-        
-        let renderCount = 0;
-        components.forEach(component => {
-            if (component && component.dirty) {
-                component.markDirty();
-                renderCount++;
-            }
-        });
         
         const frameTime = performance.now() - this.frameStart;
         this.lastFrameTime = frameTime;
@@ -88,10 +76,10 @@ class RenderBatch {
         this.avgFrameTime = (this.avgFrameTime * (this.frameCount - 1) + frameTime) / this.frameCount;
         
         if (this.frameCount % 60 === 0) {
-            document.getElementById('frame-time').textContent = this.avgFrameTime.toFixed(10) + 'ms';
+            document.getElementById('frame-time').textContent = this.avgFrameTime.toFixed(2) + 'ms';
         }
         
-        return renderCount;
+        return componentCount;
     }
     
     getStats() {
@@ -103,14 +91,12 @@ class RenderBatch {
     }
 }
 
-// PixiJS Components
 class PriceDisplayComponent extends PIXI.Container {
     constructor() {
         super();
         this.symbol = '';
         this.price = 0;
         this.change = 0;
-        this.dirty = true;
         this.setupGraphics();
     }
     
@@ -159,30 +145,21 @@ class PriceDisplayComponent extends PIXI.Container {
         this.background.beginFill(bgColor, 0.8);
         this.background.drawRoundedRect(0, 0, 120, 60, 5);
         this.background.endFill();
-        
-        this.markDirty();
-    }
-    
-    markDirty() {
-        this.dirty = true;
     }
     
     reset() {
         this.visible = false;
-        this.dirty = false;
         this.x = 0;
         this.y = 0;
     }
 }
 
-// Order Book Component
 class OrderBookComponent extends PIXI.Container {
     constructor() {
         super();
         this.symbol = '';
         this.bids = [];
         this.asks = [];
-        this.dirty = true;
         this.setupGraphics();
     }
     
@@ -218,7 +195,6 @@ class OrderBookComponent extends PIXI.Container {
         this.asks = asks.slice(0, 10);
         this.titleText.text = `${symbol} Order Book`;
         this.renderLevels();
-        this.markDirty();
     }
     
     renderLevels() {
@@ -252,17 +228,16 @@ class OrderBookComponent extends PIXI.Container {
         return size.toString();
     }
     
-    markDirty() { this.dirty = true; }
-    reset() { this.visible = false; this.dirty = false; }
+    reset() {
+        this.visible = false;
+    }
 }
 
-// Trade Feed Component
 class TradeFeedComponent extends PIXI.Container {
     constructor() {
         super();
         this.trades = [];
         this.maxTrades = 15;
-        this.dirty = true;
         this.setupGraphics();
     }
     
@@ -284,7 +259,6 @@ class TradeFeedComponent extends PIXI.Container {
             this.trades = this.trades.slice(0, this.maxTrades);
         }
         this.renderTrades();
-        this.markDirty();
     }
     
     renderTrades() {
@@ -308,16 +282,15 @@ class TradeFeedComponent extends PIXI.Container {
         return size.toString();
     }
     
-    markDirty() { this.dirty = true; }
-    reset() { this.visible = false; this.dirty = false; }
+    reset() {
+        this.visible = false;
+    }
 }
 
-// Main Trading Application
 class TradingApp {
     constructor(canvas) {
         this.canvas = canvas;
         
-        // Initialize PixiJS
         this.app = new PIXI.Application({
             view: canvas,
             width: canvas.width,
@@ -334,7 +307,6 @@ class TradingApp {
         this.connectionStatus = 'disconnected';
         this.stressTestMode = false;
         
-        // Shared memory components
         this.sharedBuffer = null;
         this.priceArray = null;
         this.timestampArray = null;
@@ -364,29 +336,24 @@ class TradingApp {
     }
     
     setupUI() {
-        // Price displays container
         this.priceContainer = new PIXI.Container();
         this.priceContainer.x = 20; this.priceContainer.y = 20;
         this.app.stage.addChild(this.priceContainer);
         
-        // Order book
         this.orderBook = new OrderBookComponent();
         this.orderBook.x = 800; this.orderBook.y = 20;
         this.app.stage.addChild(this.orderBook);
         
-        // Trade feed
         this.tradeFeed = new TradeFeedComponent();
         this.tradeFeed.x = 20; this.tradeFeed.y = 400;
         this.app.stage.addChild(this.tradeFeed);
         
-        // Performance stats display
         this.statsDisplay = new PIXI.Text('', {
             fontFamily: 'Courier New', fontSize: 12, fill: 0x00ff00
         });
         this.statsDisplay.x = 20; this.statsDisplay.y = canvas.height - 60;
         this.app.stage.addChild(this.statsDisplay);
         
-        // Connection status display
         this.connectionDisplay = new PIXI.Text('', {
             fontFamily: 'Courier New', fontSize: 12, fill: 0x00ffff
         });
@@ -397,7 +364,6 @@ class TradingApp {
     initializeSharedMemory() {
         console.log('Initializing SharedArrayBuffer + WebSocket Worker system...');
         
-        // Check if SharedArrayBuffer is supported
         if (typeof SharedArrayBuffer === 'undefined') {
             console.error('SharedArrayBuffer not supported. This app requires HTTPS and proper CORS headers.');
             this.showError('SharedArrayBuffer not supported. Please use HTTPS and proper CORS headers.');
@@ -405,10 +371,8 @@ class TradingApp {
         }
         
         try {
-            // Create shared memory buffer
             this.sharedBuffer = new SharedArrayBuffer(MEMORY_LAYOUT.BUFFER_SIZE);
             
-            // Create typed arrays pointing to shared memory
             this.priceArray = new Float32Array(this.sharedBuffer, MEMORY_LAYOUT.PRICE_OFFSET, MEMORY_LAYOUT.SYMBOL_COUNT);
             this.timestampArray = new Float64Array(this.sharedBuffer, MEMORY_LAYOUT.TIMESTAMP_OFFSET, MEMORY_LAYOUT.SYMBOL_COUNT);
             this.changeArray = new Float32Array(this.sharedBuffer, MEMORY_LAYOUT.CHANGE_OFFSET, MEMORY_LAYOUT.SYMBOL_COUNT);
@@ -417,7 +381,6 @@ class TradingApp {
             this.askArray = new Float32Array(this.sharedBuffer, MEMORY_LAYOUT.ASK_OFFSET, MEMORY_LAYOUT.SYMBOL_COUNT);
             this.flagsArray = new Uint8Array(this.sharedBuffer, MEMORY_LAYOUT.FLAGS_OFFSET, MEMORY_LAYOUT.SYMBOL_COUNT);
             
-            // Initialize WebWorker
             this.dataWorker = new Worker('data-worker.js');
             
             this.dataWorker.onmessage = (event) => {
@@ -434,7 +397,6 @@ class TradingApp {
                 this.showError('WebWorker failed to initialize');
             };
             
-            // Send shared buffer to worker and start connection
             this.dataWorker.postMessage({
                 type: 'init',
                 data: {
@@ -443,7 +405,6 @@ class TradingApp {
                 }
             });
             
-            // Start memory polling
             this.startMemoryPolling();
             
             console.log('SharedArrayBuffer + WebSocket Worker system initialized');
@@ -455,15 +416,9 @@ class TradingApp {
     }
     
     startMemoryPolling() {
-        let debugCounter = 0;
-        
         const pollMemory = () => {
-            debugCounter++;
-            
-            const updatedComponents = [];
             let updatesThisFrame = 0;
             
-            // Check each symbol for updates (same logic)
             for (let i = 0; i < MEMORY_LAYOUT.SYMBOL_COUNT; i++) {
                 const isDirty = Atomics.load(this.flagsArray, i);
                 
@@ -478,10 +433,7 @@ class TradingApp {
                     if (timestamp > this.lastTimestamps[i]) {
                         const symbol = INDEX_TO_SYMBOL.get(i);
                         if (symbol && price > 0) {
-                            const component = this.updatePriceFromMemory(symbol, price, change, volume, bid, ask);
-                            if (component) {
-                                updatedComponents.push(component);
-                            }
+                            this.updatePriceFromMemory(symbol, price, change, volume, bid, ask);
                             this.lastTimestamps[i] = timestamp;
                             updatesThisFrame++;
                         }
@@ -492,10 +444,7 @@ class TradingApp {
             }
             
             this.updateCount += updatesThisFrame;
-
-            if (updatedComponents.length > 0) {
-                this.renderBatch.processBatch(updatedComponents);
-            }
+            this.renderBatch.processBatch(updatesThisFrame);
         };
         
         this.app.ticker.add(pollMemory);
@@ -510,7 +459,6 @@ class TradingApp {
             priceDisplay = this.priceDisplayPool.acquire();
             priceDisplay.setup(symbol, price);
             
-            // Position in grid
             const index = this.activePriceDisplays.size;
             const col = index % 5;
             const row = Math.floor(index / 5);
@@ -523,21 +471,16 @@ class TradingApp {
             priceDisplay.updatePrice(price, change);
         }
         
-        // Update order book for first symbol
         if (this.activePriceDisplays.size === 1) {
             this.updateOrderBookFromMemory(symbol, bid, ask, volume);
         }
         
-        // Simulate trade feed
-        if (Math.random() < 0.05) { // 5% chance per update
+        if (Math.random() < 0.05) {
             this.simulateTradeFromMemory(symbol, price, volume);
         }
-        
-        return priceDisplay;
     }
     
     updateOrderBookFromMemory(symbol, bid, ask, volume) {
-        // Generate mock order book from bid/ask
         const bids = [];
         const asks = [];
         
@@ -569,7 +512,6 @@ class TradingApp {
     }
     
     handleWorkerStats(stats) {
-        // Update connection status based on worker stats
         if (stats.connected !== undefined) {
             this.connectionStatus = stats.connected ? 'connected' : 'disconnected';
             this.updateConnectionStatus();
@@ -593,7 +535,6 @@ class TradingApp {
             }
         }
         
-        // Update PixiJS connection display
         this.connectionDisplay.text = `Connection: ${this.connectionStatus}`;
         this.connectionDisplay.style.fill = this.connectionStatus === 'connected' ? 0x00ff00 : 0xff0000;
     }
@@ -610,14 +551,12 @@ class TradingApp {
             const timeDiff = (now - this.lastStatsUpdate) / 1000;
             const updatesPerSec = Math.round(this.updateCount / timeDiff);
             
-            // Update HTML stats
             document.getElementById('updates-per-sec').textContent = updatesPerSec;
             document.getElementById('active-symbols').textContent = this.activePriceDisplays.size;
             
             const poolStats = this.priceDisplayPool.getStats();
             document.getElementById('pool-available').textContent = poolStats.available;
             
-            // Update PixiJS stats display
             const batchStats = this.renderBatch.getStats();
             this.statsDisplay.text = `WebSocket + SharedArrayBuffer | FPS: ${Math.round(this.app.ticker.FPS)} | Updates/sec: ${updatesPerSec} | Pool: ${poolStats.inUse}/${poolStats.available + poolStats.inUse}`;
             
@@ -626,7 +565,6 @@ class TradingApp {
         }, 1000);
     }
     
-    // Control methods for UI buttons
     reconnectWebSocket() {
         if (this.dataWorker) {
             console.log('Reconnecting WebSocket...');
@@ -670,7 +608,6 @@ class TradingApp {
         } else {
             this.symbols = ['EURUSD', 'GBPUSD', 'USDJPY', 'BTCUSD', 'ETHUSD'];
             
-            // Remove extra displays
             this.activePriceDisplays.forEach((display, symbol) => {
                 if (!this.symbols.includes(symbol)) {
                     this.priceContainer.removeChild(display);
