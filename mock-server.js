@@ -55,14 +55,14 @@ function encodeOrderBook(msg) {
     for (let i = 0; i < 5; i++) {
         const bid = msg.bids[i] || { price: 0, size: 0 };
         view.setFloat64(offset, bid.price, true);
-        view.setUint32(offset + 8, bid.size, true);
+        view.setUint32(offset + 8, Math.floor(bid.size) || 0, true);
         offset += 12;
     }
     // Top 5 asks  
     for (let i = 0; i < 5; i++) {
         const ask = msg.asks[i] || { price: 0, size: 0 };
         view.setFloat64(offset, ask.price, true);
-        view.setUint32(offset + 8, ask.size, true);
+        view.setUint32(offset + 8, Math.floor(ask.size) || 0, true);
         offset += 12;
     }
     

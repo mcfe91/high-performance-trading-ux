@@ -243,9 +243,10 @@ class OrderBookComponent extends PIXI.Container {
     }
     
     formatSize(size) {
-        if (size >= 1000000) return `${(size / 1000000).toFixed(1)}M`;
-        if (size >= 1000) return `${(size / 1000).toFixed(0)}K`;
-        return size.toString();
+        if (!isFinite(size) || size <= 0) return '0';
+        if (size >= 1000000) return `${(size / 1000000).toFixed(2)}M`; // More precision
+        if (size >= 10000) return `${(size / 1000).toFixed(1)}K`;  // Higher threshold
+        return Math.floor(size).toLocaleString(); // Show full numbers under 10K
     }
     
     reset() {
@@ -261,7 +262,7 @@ class TradeFeedComponent extends PIXI.Container {
     constructor() {
         super();
         this.trades = [];
-        this.maxTrades = 15;
+        this.maxTrades = 25;
         
         this.tradeTextPool = new ComponentPool(
             () => new PIXI.Text('', { fontFamily: 'Courier New', fontSize: 10, fill: 0xffffff }),
@@ -306,11 +307,12 @@ class TradeFeedComponent extends PIXI.Container {
             this.tradeContainer.addChild(tradeText);
         });
     }
-    
+
     formatSize(size) {
-        if (size >= 1000000) return `${(size / 1000000).toFixed(1)}M`;
-        if (size >= 1000) return `${(size / 1000).toFixed(0)}K`;
-        return size.toString();
+        if (!isFinite(size) || size <= 0) return '0';
+        if (size >= 1000000) return `${(size / 1000000).toFixed(2)}M`; // More precision
+        if (size >= 10000) return `${(size / 1000).toFixed(1)}K`;  // Higher threshold
+        return Math.floor(size).toLocaleString(); // Show full numbers under 10K
     }
     
     reset() {
@@ -378,7 +380,7 @@ class TradingApp {
         this.app.stage.addChild(this.orderBook);
         
         this.tradeFeed = new TradeFeedComponent();
-        this.tradeFeed.x = 20; this.tradeFeed.y = 400;
+        this.tradeFeed.x = 800; this.tradeFeed.y = 300;
         this.app.stage.addChild(this.tradeFeed);
         
         this.statsDisplay = new PIXI.Text('', {
@@ -652,8 +654,8 @@ class TradingApp {
         this.stressTestMode = !this.stressTestMode;
         
         if (this.stressTestMode) {
-            this.activeSymbols = new Set(Array.from(SYMBOL_MAP.keys()).slice(0, 15));
-            console.log('Stress test mode ON - 15 symbols');
+            this.activeSymbols = new Set(Array.from(SYMBOL_MAP.keys()));
+            console.log(`Stress test mode ON - ${this.activeSymbols.length} symbols`);
         } else {
             this.activeSymbols = new Set(['EURUSD', 'GBPUSD', 'USDJPY', 'BTCUSD', 'ETHUSD']);
             this.cleanupRemovedSymbols();
