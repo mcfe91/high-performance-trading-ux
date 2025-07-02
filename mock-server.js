@@ -31,6 +31,7 @@ class MarketDataServer {
         this.orderBooks = new Map();
         this.isRunning = false;
         this.updateCount = 0;
+        this.timers = [];
         
         this.initializeOrderBooks();
     }
@@ -39,22 +40,19 @@ class MarketDataServer {
         this.wss = new WebSocket.Server({ port: this.port });
         
         this.wss.on('connection', (ws) => {
-            console.log(`📡 Client connected. Total clients: ${this.clients.size + 1}`);
+            console.log(`Client connected. Total clients: ${this.clients.size + 1}`);
             this.clients.add(ws);
             
-            // Send initial data to new client
             this.sendInitialData(ws);
             
-            // Start data generation if first client
             if (this.clients.size === 1) {
                 this.startDataGeneration();
             }
             
             ws.on('close', () => {
                 this.clients.delete(ws);
-                console.log(`📡 Client disconnected. Total clients: ${this.clients.size}`);
+                console.log(`Client disconnected. Total clients: ${this.clients.size}`);
                 
-                // Stop data generation if no clients
                 if (this.clients.size === 0) {
                     this.stopDataGeneration();
                 }
@@ -66,8 +64,8 @@ class MarketDataServer {
             });
         });
         
-        console.log(`🚀 Market data server started on ws://localhost:${this.port}`);
-        console.log(`📊 Broadcasting ${this.symbols.length} symbols`);
+        console.log(`Market data server started on ws://localhost:${this.port}`);
+        console.log(`Broadcasting ${this.symbols.length} symbols`);
     }
     
     initializeOrderBooks() {
@@ -79,7 +77,6 @@ class MarketDataServer {
                 timestamp: Date.now()
             };
             
-            // Generate realistic order book depth
             for (let i = 0; i < 10; i++) {
                 const spread = symbol.includes('JPY') ? 0.01 : 0.0001;
                 orderBook.bids.push({
@@ -97,7 +94,6 @@ class MarketDataServer {
     }
     
     sendInitialData(ws) {
-        // Send current prices for all symbols
         this.symbols.forEach(({symbol, price}) => {
             this.sendToClient(ws, {
                 type: 'price_update',
@@ -111,7 +107,6 @@ class MarketDataServer {
             });
         });
         
-        // Send initial order books
         this.orderBooks.forEach(orderBook => {
             this.sendToClient(ws, {
                 type: 'order_book',
@@ -135,51 +130,53 @@ class MarketDataServer {
         });
     }
     
+    clearAllTimers() {
+        this.timers.forEach(timer => clearInterval(timer));
+        this.timers = [];
+    }
+    
     startDataGeneration() {
         this.isRunning = true;
+        this.clearAllTimers();
         console.log('Starting ultra-high frequency data generation');
         
-        // Multiple intervals for realistic burst patterns
         const intervals = [1, 2, 3, 5, 8, 13, 21];
         
         intervals.forEach(interval => {
             const timer = setInterval(() => {
-                if (!this.isRunning) {
-                    clearInterval(timer);
-                    return;
-                }
+                if (!this.isRunning) return;
                 
-                // Generate multiple updates per interval
                 const updateCount = Math.floor(Math.random() * 3) + 1;
                 for (let i = 0; i < updateCount; i++) {
                     this.generatePriceUpdate();
                 }
             }, interval);
+            
+            this.timers.push(timer);
         });
                 
-        // Order book updates
-        setInterval(() => {
+        const orderBookTimer = setInterval(() => {
             if (this.isRunning) this.generateOrderBookUpdate();
         }, 100);
+        this.timers.push(orderBookTimer);
         
-        // Trade generation
-        setInterval(() => {
+        const tradeTimer = setInterval(() => {
             if (this.isRunning) this.generateTrade();
         }, 150);
+        this.timers.push(tradeTimer);
         
-        // Stats reporting
-        setInterval(() => {
+        const statsTimer = setInterval(() => {
             if (this.isRunning) {
-                console.log(`📈 Generated ${this.updateCount} updates in last second`);
+                console.log(`Generated ${this.updateCount} updates in last second`);
                 this.updateCount = 0;
             }
         }, 1000);
+        this.timers.push(statsTimer);
     }
     
     generatePriceUpdate() {
         const symbolData = this.symbols[Math.floor(Math.random() * this.symbols.length)];
         
-        // Generate realistic price movement
         const randomWalk = (Math.random() - 0.5) * symbolData.volatility * 2;
         const trendComponent = symbolData.trend * Math.sin(Date.now() / 10000);
         const newPrice = Math.max(0.01, symbolData.price + randomWalk + trendComponent);
@@ -187,7 +184,6 @@ class MarketDataServer {
         
         symbolData.price = newPrice;
         
-        // Generate volume and bid/ask
         const volume = Math.floor(Math.random() * 1000000) + 50000;
         const spread = symbolData.symbol.includes('JPY') ? 0.01 : 0.0001;
         const bid = newPrice - spread / 2;
@@ -206,7 +202,6 @@ class MarketDataServer {
         
         this.updateCount++;
         
-        // Occasionally update trend
         if (Math.random() < 0.001) {
             symbolData.trend = (Math.random() - 0.5) * 0.001;
         }
@@ -218,7 +213,6 @@ class MarketDataServer {
         
         if (!orderBook) return;
         
-        // Update random levels
         const isBid = Math.random() > 0.5;
         const levels = isBid ? orderBook.bids : orderBook.asks;
         
@@ -252,26 +246,25 @@ class MarketDataServer {
     
     stopDataGeneration() {
         this.isRunning = false;
-        console.log('⏹️ Stopped data generation');
+        this.clearAllTimers();
+        console.log('Stopped data generation');
     }
     
     stop() {
         this.stopDataGeneration();
         if (this.wss) {
             this.wss.close();
-            console.log('🛑 Market data server stopped');
+            console.log('Market data server stopped');
         }
     }
 }
 
-// Start server if run directly
 if (require.main === module) {
     const server = new MarketDataServer(8080);
     server.start();
     
-    // Graceful shutdown
     process.on('SIGINT', () => {
-        console.log('\n🛑 Shutting down market data server...');
+        console.log('\nShutting down market data server...');
         server.stop();
         process.exit(0);
     });
