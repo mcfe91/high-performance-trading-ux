@@ -22,7 +22,7 @@ A real-time trading platform built for maximum performance using SharedArrayBuff
                                                ▼
                                         ┌───────────────────┐
                                         │ SharedArrayBuffer │
-                                        │ [price][bid][ask] │
+                                        │     [price]       │
                                         └──────┬────────────┘
                                             │ Zero-copy
                                             ▼
