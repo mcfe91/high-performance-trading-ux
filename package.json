@@ -1,15 +1,25 @@
 {
-  "name": "hft-app",
+  "name": "hft-trading-platform",
   "version": "1.0.0",
   "main": "server-setup.js",
   "scripts": {
+    "start": "node server-setup.js",
+    "mock-server": "node mock-server.js",
+    "dev": "concurrently \"npm run mock-server\" \"npm run start\"",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
+  "keywords": ["trading", "websocket", "sharedarraybuffer", "high-frequency", "webgl"],
   "author": "",
   "license": "ISC",
-  "description": "",
+  "description": "Ultra-high performance trading platform using SharedArrayBuffer + WebWorkers + WebGL",
   "dependencies": {
-    "express": "^4.20.0"
+    "express": "^4.20.0",
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
   }
 }

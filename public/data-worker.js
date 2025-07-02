@@ -1,7 +1,4 @@
-// WebWorker for high-performance data processing
-// This handles all WebSocket processing and writes to shared memory
-
-// Memory layout constants
+// Memory layout constants (same as main thread)
 const MEMORY_LAYOUT = {
     SYMBOL_COUNT: 50,
     PRICE_OFFSET: 0,          // Float32Array: 0-200 bytes
@@ -14,7 +11,7 @@ const MEMORY_LAYOUT = {
     BUFFER_SIZE: 1500         // 1.5KB total
 };
 
-// Symbol to index mapping
+// Symbol to index mapping (same as main thread)
 const SYMBOL_MAP = new Map([
     ['EURUSD', 0], ['GBPUSD', 1], ['USDJPY', 2], ['BTCUSD', 3], ['ETHUSD', 4],
     ['AAPL', 5], ['TSLA', 6], ['MSFT', 7], ['EURGBP', 8], ['EURJPY', 9],
@@ -22,103 +19,176 @@ const SYMBOL_MAP = new Map([
     ['AUDUSD', 15], ['USDCHF', 16], ['XAUUSD', 17], ['XAGUSD', 18], ['UKOIL', 19]
 ]);
 
-// Global variables - DECLARED ONLY ONCE
+// Global variables for shared memory access
 let sharedBuffer, priceArray, timestampArray, changeArray, volumeArray, bidArray, askArray, flagsArray;
+let websocket = null;
+let connectionRetryCount = 0;
+let maxRetries = 5;
 let updateCount = 0;
-let mockServer;
+let isConnected = false;
 
-// Mock data generation for ultra-high frequency
-class UltraHighFrequencyGenerator {
-    constructor() {
-        this.symbols = Array.from(SYMBOL_MAP.keys()).map(symbol => ({
-            symbol,
-            basePrice: symbol === 'USDJPY' ? 149 : symbol.includes('XAU') ? 2000 : symbol.includes('OIL') ? 80 : 1.2,
-            volatility: symbol.includes('BTC') ? 100 : symbol.includes('XAU') ? 5 : 0.001,
-            trend: (Math.random() - 0.5) * 0.001
-        }));
-        
-        this.orderBooks = new Map();
-        this.initializeOrderBooks();
-        this.isRunning = false;
+// WebSocket connection management
+class MarketDataClient {
+    constructor(serverUrl = 'ws://localhost:8080') {
+        this.serverUrl = serverUrl;
+        this.websocket = null;
+        this.reconnectTimer = null;
+        this.connectionRetryCount = 0;
+        this.maxRetries = 10;
+        this.reconnectDelay = 1000; // Start with 1 second
     }
     
-    initializeOrderBooks() {
-        this.symbols.forEach(({symbol, basePrice}) => {
-            const book = { bids: [], asks: [] };
-            for (let i = 0; i < 10; i++) {
-                book.bids.push({ price: basePrice - i * 0.0001, size: Math.random() * 1000000 });
-                book.asks.push({ price: basePrice + i * 0.0001, size: Math.random() * 1000000 });
-            }
-            this.orderBooks.set(symbol, book);
-        });
-    }
-    
-    start() {
-        this.isRunning = true;
-        
-        // Ultra-high frequency price generation
-        // Multiple intervals for different update speeds
-        [1, 2, 3, 5, 8, 13].forEach(interval => {
-            const timer = setInterval(() => {
-                if (!this.isRunning) {
-                    clearInterval(timer);
-                    return;
-                }
+    connect() {
+        try {
+            console.log(`Connecting to market data server: ${this.serverUrl}`);
+            
+            this.websocket = new WebSocket(this.serverUrl);
+            
+            this.websocket.onopen = () => {
+                console.log('WebSocket connected to market data server');
+                isConnected = true;
+                this.connectionRetryCount = 0;
+                this.reconnectDelay = 1000; // Reset delay
                 
-                // Update multiple symbols per interval
-                const updateCount = Math.floor(Math.random() * 3) + 1;
-                for (let i = 0; i < updateCount; i++) {
-                    this.generatePriceUpdate();
+                // Notify main thread of connection
+                self.postMessage({
+                    type: 'connection_status',
+                    data: { connected: true }
+                });
+            };
+            
+            this.websocket.onmessage = (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    this.handleMarketData(message);
+                } catch (error) {
+                    console.error('Failed to parse WebSocket message:', error);
                 }
-            }, interval);
-        });
-        
-        console.log('🔥 Ultra-high frequency generator started in WebWorker');
-    }
-    
-    generatePriceUpdate() {
-        const symbolData = this.symbols[Math.floor(Math.random() * this.symbols.length)];
-        const symbolIndex = SYMBOL_MAP.get(symbolData.symbol);
-        
-        if (symbolIndex === undefined) return;
-        
-        // Generate realistic price movement
-        const currentPrice = priceArray[symbolIndex] || symbolData.basePrice;
-        const randomWalk = (Math.random() - 0.5) * symbolData.volatility;
-        const trendComponent = symbolData.trend * Math.sin(Date.now() / 10000);
-        const newPrice = Math.max(0.01, currentPrice + randomWalk + trendComponent);
-        const change = newPrice - currentPrice;
-        const volume = Math.floor(Math.random() * 1000000) + 50000;
-        
-        // Get order book for bid/ask
-        const book = this.orderBooks.get(symbolData.symbol);
-        const bid = book ? book.bids[0].price : newPrice - 0.0001;
-        const ask = book ? book.asks[0].price : newPrice + 0.0001;
-        
-        // Direct writes to shared memory 
-        priceArray[symbolIndex] = newPrice;
-        timestampArray[symbolIndex] = Date.now();
-        changeArray[symbolIndex] = change;
-        volumeArray[symbolIndex] = volume;
-        bidArray[symbolIndex] = bid;
-        askArray[symbolIndex] = ask;
-        
-        // Set dirty flag using Atomics (flagsArray is Uint8Array)
-        Atomics.store(flagsArray, symbolIndex, 1);
-        
-        updateCount++;
-        
-        // Occasionally update the base price for trending
-        if (Math.random() < 0.001) {
-            symbolData.basePrice = newPrice;
-            symbolData.trend = (Math.random() - 0.5) * 0.001;
+            };
+            
+            this.websocket.onclose = (event) => {
+                console.log(`WebSocket connection closed. Code: ${event.code}, Reason: ${event.reason}`);
+                isConnected = false;
+                
+                // Notify main thread of disconnection
+                self.postMessage({
+                    type: 'connection_status',
+                    data: { connected: false }
+                });
+                
+                // Attempt reconnection if not intentionally closed
+                if (event.code !== 1000 && this.connectionRetryCount < this.maxRetries) {
+                    this.scheduleReconnect();
+                }
+            };
+            
+            this.websocket.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                isConnected = false;
+            };
+            
+        } catch (error) {
+            console.error('Failed to create WebSocket connection:', error);
+            this.scheduleReconnect();
         }
     }
     
-    stop() {
-        this.isRunning = false;
+    scheduleReconnect() {
+        if (this.connectionRetryCount >= this.maxRetries) {
+            console.error(`Max reconnection attempts (${this.maxRetries}) reached. Giving up.`);
+            return;
+        }
+        
+        this.connectionRetryCount++;
+        console.log(`🔄 Scheduling reconnection attempt ${this.connectionRetryCount}/${this.maxRetries} in ${this.reconnectDelay}ms`);
+        
+        this.reconnectTimer = setTimeout(() => {
+            this.connect();
+        }, this.reconnectDelay);
+        
+        // Exponential backoff with jitter
+        this.reconnectDelay = Math.min(this.reconnectDelay * 1.5 + Math.random() * 1000, 30000);
+    }
+    
+    handleMarketData(message) {
+        switch (message.type) {
+            case 'price_update':
+                this.processPriceUpdate(message);
+                break;
+            case 'order_book':
+                this.processOrderBook(message);
+                break;
+            case 'trade':
+                this.processTrade(message);
+                break;
+            default:
+                console.warn('Unknown message type:', message.type);
+        }
+    }
+    
+    processPriceUpdate(data) {
+        const symbolIndex = SYMBOL_MAP.get(data.symbol);
+        
+        if (symbolIndex === undefined) {
+            console.warn(`Unknown symbol: ${data.symbol}`);
+            return;
+        }
+        
+        // Write data directly to shared memory - zero copy!
+        priceArray[symbolIndex] = data.price;
+        timestampArray[symbolIndex] = data.timestamp;
+        changeArray[symbolIndex] = data.change || 0;
+        volumeArray[symbolIndex] = data.volume || 0;
+        bidArray[symbolIndex] = data.bid || data.price - 0.0001;
+        askArray[symbolIndex] = data.ask || data.price + 0.0001;
+        
+        // Set dirty flag using Atomics for thread safety
+        Atomics.store(flagsArray, symbolIndex, 1);
+        
+        updateCount++;
+    }
+    
+    processOrderBook(data) {
+        // For now, we'll use order book data to update bid/ask
+        // In a real implementation, you might want separate shared memory for order books
+        const symbolIndex = SYMBOL_MAP.get(data.symbol);
+        
+        if (symbolIndex !== undefined && data.bids && data.asks && data.bids.length > 0 && data.asks.length > 0) {
+            bidArray[symbolIndex] = data.bids[0].price;
+            askArray[symbolIndex] = data.asks[0].price;
+            timestampArray[symbolIndex] = data.timestamp;
+            
+            // Set dirty flag
+            Atomics.store(flagsArray, symbolIndex, 1);
+        }
+    }
+    
+    processTrade(data) {
+        // Trade data could be used to update last trade price
+        // For now, we'll just log high-volume trades
+        if (data.size > 500000) {
+            console.log(`Large trade: ${data.symbol} ${data.side} ${data.size} @ ${data.price}`);
+        }
+    }
+    
+    disconnect() {
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+        }
+        
+        if (this.websocket) {
+            this.websocket.close(1000, 'Intentional disconnect');
+            this.websocket = null;
+        }
+        
+        isConnected = false;
+        console.log('WebSocket disconnected');
     }
 }
+
+// Global market data client instance
+let marketDataClient = null;
 
 // WebWorker message handler
 self.onmessage = function(event) {
@@ -127,19 +197,26 @@ self.onmessage = function(event) {
     switch (type) {
         case 'init':
             initializeSharedMemory(data.sharedBuffer);
-            startDataGeneration(data.symbols);
+            initializeWebSocket(data.serverUrl);
             break;
             
-        case 'start':
-            if (mockServer) mockServer.start();
+        case 'connect':
+            if (marketDataClient) {
+                marketDataClient.connect();
+            }
             break;
             
-        case 'stop':
-            if (mockServer) mockServer.stop();
+        case 'disconnect':
+            if (marketDataClient) {
+                marketDataClient.disconnect();
+            }
             break;
             
-        case 'add_symbols':
-            // Add new symbols to generation
+        case 'reconnect':
+            if (marketDataClient) {
+                marketDataClient.disconnect();
+                setTimeout(() => marketDataClient.connect(), 100);
+            }
             break;
             
         default:
@@ -148,9 +225,8 @@ self.onmessage = function(event) {
 };
 
 function initializeSharedMemory(buffer) {
-    console.log('🧠 Initializing shared memory in WebWorker');
+    console.log('Initializing shared memory in WebWorker');
     
-    // ASSIGNMENT only - variable already declared at top
     sharedBuffer = buffer;
     
     // Create typed arrays pointing to shared memory
@@ -162,18 +238,18 @@ function initializeSharedMemory(buffer) {
     askArray = new Float32Array(sharedBuffer, MEMORY_LAYOUT.ASK_OFFSET, MEMORY_LAYOUT.SYMBOL_COUNT);
     flagsArray = new Uint8Array(sharedBuffer, MEMORY_LAYOUT.FLAGS_OFFSET, MEMORY_LAYOUT.SYMBOL_COUNT);
     
-    console.log('✅ Shared memory arrays initialized:', {
+    console.log('Shared memory arrays initialized:', {
         priceArray: priceArray.length,
         timestampArray: timestampArray.length,
         totalSymbols: MEMORY_LAYOUT.SYMBOL_COUNT
     });
 }
 
-function startDataGeneration(symbols) {
-    console.log('🚀 Starting ultra-high frequency data generation');
+function initializeWebSocket(serverUrl = 'ws://localhost:8080') {
+    console.log('Initializing WebSocket client');
     
-    mockServer = new UltraHighFrequencyGenerator();
-    mockServer.start();
+    marketDataClient = new MarketDataClient(serverUrl);
+    marketDataClient.connect();
     
     // Send periodic stats back to main thread
     setInterval(() => {
@@ -181,6 +257,7 @@ function startDataGeneration(symbols) {
             type: 'stats',
             data: {
                 updatesPerSecond: updateCount,
+                connected: isConnected,
                 activeSymbols: Array.from(SYMBOL_MAP.keys()).length,
                 workerMemoryUsage: priceArray.length * 4 // bytes
             }
@@ -189,4 +266,4 @@ function startDataGeneration(symbols) {
     }, 1000);
 }
 
-console.log('💪 WebWorker loaded and ready for shared memory operations');
+console.log('WebSocket Data Worker loaded and ready for real-time market data');
