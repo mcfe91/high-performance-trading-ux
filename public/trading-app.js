@@ -160,6 +160,16 @@ class OrderBookComponent extends PIXI.Container {
         this.symbol = '';
         this.bids = [];
         this.asks = [];
+        
+        this.bidTextPool = new ComponentPool(
+            () => new PIXI.Text('', { fontFamily: 'Courier New', fontSize: 10, fill: 0x00ff00 }),
+            (text) => { text.text = ''; text.visible = false; text.y = 0; }
+        );
+        this.askTextPool = new ComponentPool(
+            () => new PIXI.Text('', { fontFamily: 'Courier New', fontSize: 10, fill: 0xff0000 }),
+            (text) => { text.text = ''; text.visible = false; text.y = 0; }
+        );
+        
         this.setupGraphics();
     }
     
@@ -198,26 +208,24 @@ class OrderBookComponent extends PIXI.Container {
     }
     
     renderLevels() {
+        this.bidContainer.children.forEach(text => this.bidTextPool.release(text));
+        this.askContainer.children.forEach(text => this.askTextPool.release(text));
         this.bidContainer.removeChildren();
         this.askContainer.removeChildren();
         
-        const levelStyle = { fontFamily: 'Courier New', fontSize: 10, fill: 0xffffff };
-        
         this.bids.forEach((bid, index) => {
-            const levelText = new PIXI.Text(
-                `${bid.price.toFixed(4)} ${this.formatSize(bid.size)}`,
-                { ...levelStyle, fill: 0x00ff00 }
-            );
+            const levelText = this.bidTextPool.acquire();
+            levelText.text = `${bid.price.toFixed(4)} ${this.formatSize(bid.size)}`;
             levelText.y = index * 15;
+            levelText.visible = true;
             this.bidContainer.addChild(levelText);
         });
         
         this.asks.forEach((ask, index) => {
-            const levelText = new PIXI.Text(
-                `${ask.price.toFixed(4)} ${this.formatSize(ask.size)}`,
-                { ...levelStyle, fill: 0xff0000 }
-            );
+            const levelText = this.askTextPool.acquire();
+            levelText.text = `${ask.price.toFixed(4)} ${this.formatSize(ask.size)}`;
             levelText.y = index * 15;
+            levelText.visible = true;
             this.askContainer.addChild(levelText);
         });
     }
@@ -230,6 +238,10 @@ class OrderBookComponent extends PIXI.Container {
     
     reset() {
         this.visible = false;
+        this.bidContainer.children.forEach(text => this.bidTextPool.release(text));
+        this.askContainer.children.forEach(text => this.askTextPool.release(text));
+        this.bidContainer.removeChildren();
+        this.askContainer.removeChildren();
     }
 }
 
@@ -238,6 +250,12 @@ class TradeFeedComponent extends PIXI.Container {
         super();
         this.trades = [];
         this.maxTrades = 15;
+        
+        this.tradeTextPool = new ComponentPool(
+            () => new PIXI.Text('', { fontFamily: 'Courier New', fontSize: 10, fill: 0xffffff }),
+            (text) => { text.text = ''; text.visible = false; text.y = 0; text.alpha = 1; }
+        );
+        
         this.setupGraphics();
     }
     
@@ -262,16 +280,17 @@ class TradeFeedComponent extends PIXI.Container {
     }
     
     renderTrades() {
+        this.tradeContainer.children.forEach(text => this.tradeTextPool.release(text));
         this.tradeContainer.removeChildren();
         
         this.trades.forEach((trade, index) => {
             const color = trade.side === 'buy' ? 0x00ff00 : 0xff0000;
-            const tradeText = new PIXI.Text(
-                `${trade.symbol} ${trade.side.toUpperCase()} ${trade.price.toFixed(4)} ${this.formatSize(trade.size)}`,
-                { fontFamily: 'Courier New', fontSize: 10, fill: color }
-            );
+            const tradeText = this.tradeTextPool.acquire();
+            tradeText.text = `${trade.symbol} ${trade.side.toUpperCase()} ${trade.price.toFixed(4)} ${this.formatSize(trade.size)}`;
+            tradeText.style.fill = color;
             tradeText.y = index * 15;
             tradeText.alpha = Math.max(0.3, 1 - (index * 0.05));
+            tradeText.visible = true;
             this.tradeContainer.addChild(tradeText);
         });
     }
@@ -284,6 +303,8 @@ class TradeFeedComponent extends PIXI.Container {
     
     reset() {
         this.visible = false;
+        this.tradeContainer.children.forEach(text => this.tradeTextPool.release(text));
+        this.tradeContainer.removeChildren();
     }
 }
 
@@ -300,7 +321,7 @@ class TradingApp {
             targetFrameRate: 120,
         });
         
-        this.symbols = ['EURUSD', 'GBPUSD', 'USDJPY', 'BTCUSD', 'ETHUSD'];
+        this.activeSymbols = new Set(['EURUSD', 'GBPUSD', 'USDJPY', 'BTCUSD', 'ETHUSD']);
         this.activePriceDisplays = new Map();
         this.updateCount = 0;
         this.lastStatsUpdate = Date.now();
@@ -432,7 +453,7 @@ class TradingApp {
                     
                     if (timestamp > this.lastTimestamps[i]) {
                         const symbol = INDEX_TO_SYMBOL.get(i);
-                        if (symbol && price > 0) {
+                        if (symbol && price > 0 && this.activeSymbols.has(symbol)) {
                             this.updatePriceFromMemory(symbol, price, change, volume, bid, ask);
                             this.lastTimestamps[i] = timestamp;
                             updatesThisFrame++;
@@ -459,14 +480,9 @@ class TradingApp {
             priceDisplay = this.priceDisplayPool.acquire();
             priceDisplay.setup(symbol, price);
             
-            const index = this.activePriceDisplays.size;
-            const col = index % 5;
-            const row = Math.floor(index / 5);
-            priceDisplay.x = col * 140;
-            priceDisplay.y = row * 80;
-            
-            this.priceContainer.addChild(priceDisplay);
             this.activePriceDisplays.set(symbol, priceDisplay);
+            this.priceContainer.addChild(priceDisplay);
+            this.repositionDisplays();
         } else {
             priceDisplay.updatePrice(price, change);
         }
@@ -478,6 +494,29 @@ class TradingApp {
         if (Math.random() < 0.05) {
             this.simulateTradeFromMemory(symbol, price, volume);
         }
+    }
+    
+    repositionDisplays() {
+        let index = 0;
+        this.activePriceDisplays.forEach((display) => {
+            const col = index % 5;
+            const row = Math.floor(index / 5);
+            display.x = col * 140;
+            display.y = row * 80;
+            index++;
+        });
+    }
+    
+    cleanupRemovedSymbols() {
+        Array.from(this.activePriceDisplays.keys()).forEach(symbol => {
+            if (!this.activeSymbols.has(symbol)) {
+                const display = this.activePriceDisplays.get(symbol);
+                this.priceContainer.removeChild(display);
+                this.priceDisplayPool.release(display);
+                this.activePriceDisplays.delete(symbol);
+            }
+        });
+        this.repositionDisplays();
     }
     
     updateOrderBookFromMemory(symbol, bid, ask, volume) {
@@ -574,28 +613,26 @@ class TradingApp {
     
     addMoreSymbols() {
         const allSymbols = Array.from(SYMBOL_MAP.keys());
-        const currentCount = this.symbols.length;
-        if (currentCount < allSymbols.length) {
-            this.symbols = allSymbols.slice(0, Math.min(currentCount + 2, allSymbols.length));
-            console.log(`Added symbols. Total: ${this.symbols.length}`);
+        const currentSymbols = Array.from(this.activeSymbols);
+        
+        if (currentSymbols.length < allSymbols.length) {
+            const availableSymbols = allSymbols.filter(s => !this.activeSymbols.has(s));
+            const symbolsToAdd = availableSymbols.slice(0, 2);
+            
+            symbolsToAdd.forEach(symbol => this.activeSymbols.add(symbol));
+            console.log(`Added symbols: ${symbolsToAdd.join(', ')}. Total: ${this.activeSymbols.size}`);
         }
     }
     
     removeSymbols() {
-        if (this.symbols.length > 2) {
-            const removedSymbols = this.symbols.slice(-2);
-            this.symbols = this.symbols.slice(0, -2);
+        if (this.activeSymbols.size > 2) {
+            const symbolsArray = Array.from(this.activeSymbols);
+            const symbolsToRemove = symbolsArray.slice(-2);
             
-            removedSymbols.forEach(symbol => {
-                const display = this.activePriceDisplays.get(symbol);
-                if (display) {
-                    this.priceContainer.removeChild(display);
-                    this.priceDisplayPool.release(display);
-                    this.activePriceDisplays.delete(symbol);
-                }
-            });
+            symbolsToRemove.forEach(symbol => this.activeSymbols.delete(symbol));
+            this.cleanupRemovedSymbols();
             
-            console.log(`Removed symbols. Total: ${this.symbols.length}`);
+            console.log(`Removed symbols: ${symbolsToRemove.join(', ')}. Total: ${this.activeSymbols.size}`);
         }
     }
     
@@ -603,18 +640,11 @@ class TradingApp {
         this.stressTestMode = !this.stressTestMode;
         
         if (this.stressTestMode) {
-            this.symbols = Array.from(SYMBOL_MAP.keys()).slice(0, 15);
+            this.activeSymbols = new Set(Array.from(SYMBOL_MAP.keys()).slice(0, 15));
             console.log('Stress test mode ON - 15 symbols');
         } else {
-            this.symbols = ['EURUSD', 'GBPUSD', 'USDJPY', 'BTCUSD', 'ETHUSD'];
-            
-            this.activePriceDisplays.forEach((display, symbol) => {
-                if (!this.symbols.includes(symbol)) {
-                    this.priceContainer.removeChild(display);
-                    this.priceDisplayPool.release(display);
-                    this.activePriceDisplays.delete(symbol);
-                }
-            });
+            this.activeSymbols = new Set(['EURUSD', 'GBPUSD', 'USDJPY', 'BTCUSD', 'ETHUSD']);
+            this.cleanupRemovedSymbols();
             console.log('Stress test mode OFF');
         }
     }
