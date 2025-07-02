@@ -9,7 +9,6 @@ A real-time trading platform built for maximum performance using SharedArrayBuff
 - **WebGL Rendering** - Hardware-accelerated UI with PixiJS
 - **Object Pooling** - Zero-garbage collection for smooth 60+ FPS
 - **Real-time Market Data** - Live price feeds, order books, and trade streams
-- **50+ Symbols** - Forex, stocks, crypto, commodities, indices
 - **Stress Testing** - Handle thousands of updates per second
 
 ## Architecture
@@ -61,4 +60,7 @@ Open `http://localhost:3000` in a modern browser (requires HTTPS for SharedArray
 - **>60 FPS** smooth rendering  
 - **75% smaller** network messages
 - **Zero latency** SharedArrayBuffer updates
+
+## TODO
+- ** Symbols are fixed at 50 and static
 
