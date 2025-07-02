@@ -63,4 +63,5 @@ Open `http://localhost:3000` in a modern browser (requires HTTPS for SharedArray
 
 ## TODO
 - Symbols are currently hardcoded to support memory layout. Make this dynamic somehow...
+- Tradebook and Live trade data is currently just simulated in the client. Serialize and also dynamically write to shared memory. Hard!
 
