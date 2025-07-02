@@ -22,7 +22,7 @@ app.get('*', (req, res) => {
 
 // Start the server
 app.listen(PORT, () => {
-    console.log(`🚀 Server running at http://localhost:${PORT}`);
-    console.log(`✅ SharedArrayBuffer headers enabled`);
-    console.log(`📊 Open your browser to http://localhost:${PORT} to see the demo`);
+    console.log(`Server running at http://localhost:${PORT}`);
+    console.log(`SharedArrayBuffer headers enabled`);
+    console.log(`Open your browser to http://localhost:${PORT} to see the demo`);
 });
