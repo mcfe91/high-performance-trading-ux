@@ -11,6 +11,8 @@ A real-time trading platform built for maximum performance using SharedArrayBuff
 - **Real-time Market Data** - Live price feeds, order books, and trade streams
 - **Stress Testing** - Handle thousands of updates per second
 
+https://github.com/user-attachments/assets/5d4840a2-e101-4a63-a6e7-56b67220b614
+
 ## Architecture
 
 ```
